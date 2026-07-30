@@ -1,0 +1,61 @@
+#include "pic.h"
+#include "io.h"
+
+#define PIC1_COMMAND 0x20
+#define PIC1_DATA    0x21
+#define PIC2_COMMAND 0xA0
+#define PIC2_DATA    0xA1
+
+#define PIC_EOI  0x20   /* end-of-interrupt command */
+#define ICW1_INIT 0x10
+#define ICW1_ICW4 0x01
+#define ICW4_8086 0x01
+
+void pic_remap(uint8_t offset1, uint8_t offset2) {
+    uint8_t mask1 = inb(PIC1_DATA);
+    uint8_t mask2 = inb(PIC2_DATA);
+
+    outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
+    io_wait();
+    outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
+    io_wait();
+
+    outb(PIC1_DATA, offset1);    /* ICW2: vector offset for master */
+    io_wait();
+    outb(PIC2_DATA, offset2);    /* ICW2: vector offset for slave */
+    io_wait();
+
+    outb(PIC1_DATA, 4);          /* ICW3: slave PIC lives on IRQ2 */
+    io_wait();
+    outb(PIC2_DATA, 2);          /* ICW3: slave's cascade identity */
+    io_wait();
+
+    outb(PIC1_DATA, ICW4_8086);
+    io_wait();
+    outb(PIC2_DATA, ICW4_8086);
+    io_wait();
+
+    outb(PIC1_DATA, mask1);      /* restore saved masks */
+    outb(PIC2_DATA, mask2);
+}
+
+void pic_send_eoi(uint8_t irq) {
+    if (irq >= 8) {
+        outb(PIC2_COMMAND, PIC_EOI);
+    }
+    outb(PIC1_COMMAND, PIC_EOI);
+}
+
+void pic_set_mask(uint8_t irq) {
+    uint16_t port = irq < 8 ? PIC1_DATA : PIC2_DATA;
+    uint8_t line  = irq < 8 ? irq : irq - 8;
+    uint8_t value = inb(port) | (1 << line);
+    outb(port, value);
+}
+
+void pic_clear_mask(uint8_t irq) {
+    uint16_t port = irq < 8 ? PIC1_DATA : PIC2_DATA;
+    uint8_t line  = irq < 8 ? irq : irq - 8;
+    uint8_t value = inb(port) & ~(1 << line);
+    outb(port, value);
+}

@@ -4,8 +4,8 @@
  gen_checksum.py  -  Build-time kernel integrity checksum tool
 =================================================================
 Computes the checksum that boot/stage2.asm will recompute at boot
-time and compare against, seeded by the quantum-derived constant
-from quantum_key_gen.py.
+time and compare against, seeded by the random constant produced
+by gen_seed.py.
 
 The algorithm here MUST exactly match verify_checksum in
 boot/stage2.asm:
@@ -65,7 +65,7 @@ def main():
         raise RuntimeError(
             f"Kernel ({len(kernel_data)} bytes) exceeds reserved budget "
             f"({max_bytes} bytes). Increase KERNEL_SECTORS in stage2.asm "
-            f"and the Makefile if the kernel grows."
+            f"and KERNEL_MAX_BYTES in the Makefile if the kernel grows."
         )
 
     padded = kernel_data + b"\x00" * (max_bytes - len(kernel_data))

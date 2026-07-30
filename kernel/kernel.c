@@ -1,19 +1,12 @@
 #include "vga.h"
-
-/* =============================================================
- *  kernel.c  -  Tiny Operating System entry point
- * =============================================================
- *  This is intentionally NOT a full kernel. It exists to prove
- *  that the boot chain (BIOS -> Stage1 -> Stage2 -> Protected
- *  Mode -> here) works end to end. It does the minimum needed
- *  to demonstrate a working 32-bit protected-mode environment:
- *    - writes directly to VGA text video memory
- *    - halts the CPU cleanly instead of running off into garbage
- *
- *  Deliberately NOT implemented (out of scope for this project):
- *    paging, interrupts/IDT, a scheduler, drivers beyond VGA,
- *    a filesystem, user mode / syscalls.
- * ============================================================= */
+#include "idt.h"
+#include "pic.h"
+#include "timer.h"
+#include "keyboard.h"
+#include "serial.h"
+#include "kmalloc.h"
+#include "paging.h"
+#include "shell.h"
 
 /* Mirrors the bootloader's use of QEMU's debug console (port 0xE9) so
  * the whole boot chain can be tested headlessly / in CI. Inert on
@@ -27,22 +20,44 @@ static void debug_str(const char *s) {
 
 void kernel_main(void) {
     debug_str("[kernel] kernel_main() reached.\n");
+
     vga_clear();
-
-    vga_print_colored("Tiny OS\n", 0x0A);            /* light green */
-    vga_print_colored("========\n\n", 0x0A);
-
-    vga_print("Kernel loaded successfully by the\n");
-    vga_print("Quantum-Assisted Secure Bootloader.\n\n");
-
+    vga_print_colored("AtlasOS\n", 0x0A);
+    vga_print_colored("=======\n\n", 0x0A);
+    vga_print("Loaded by a custom two-stage bootloader.\n");
     vga_print_colored("[OK] Protected mode active (32-bit)\n", 0x0F);
     vga_print_colored("[OK] Kernel integrity verified before load\n", 0x0F);
-    vga_print_colored("[OK] Checksum seed derived from a BB84 QKD\n", 0x0F);
-    vga_print_colored("     simulation (Qiskit research module)\n", 0x0F);
 
-    vga_print("\nSystem halted.\n");
+    /* Bring-up order matters:
+     *   1. IDT before PIC - so that even if something goes wrong
+     *      during PIC remapping, a stray interrupt lands on a
+     *      handler instead of a triple fault.
+     *   2. PIC remap before anything unmasks an IRQ - otherwise a
+     *      timer/keyboard interrupt would vector into a CPU
+     *      exception slot (see pic.c).
+     *   3. Drivers that install IRQ handlers (timer, keyboard)
+     *      before we globally enable interrupts with STI.
+     *   4. kmalloc before paging - paging.c doesn't need the heap,
+     *      but a real allocator (page tables, VMM structures) would;
+     *      keeping this order documents the dependency for later.
+     */
+    idt_init();
+    pic_remap(0x20, 0x28);
 
-    for (;;) {
-        __asm__ volatile ("hlt");
-    }
+    timer_init(100);        /* 100 Hz tick */
+    keyboard_init();
+    serial_init();
+    kmalloc_init();
+    paging_init();
+
+    vga_print_colored("[OK] IDT + PIC + PIT timer (IRQ0)\n", 0x0F);
+    vga_print_colored("[OK] PS/2 keyboard driver (IRQ1)\n", 0x0F);
+    vga_print_colored("[OK] Serial (COM1) driver\n", 0x0F);
+    vga_print_colored("[OK] Heap allocator (kmalloc) online\n", 0x0F);
+    vga_print_colored("[OK] Paging enabled (identity-mapped)\n", 0x0F);
+
+    debug_str("[kernel] All subsystems initialized. Enabling interrupts.\n");
+    __asm__ volatile ("sti");
+
+    shell_run();   /* never returns */
 }

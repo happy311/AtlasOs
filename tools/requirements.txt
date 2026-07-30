@@ -1,2 +1,4 @@
-qiskit>=1.0
-qiskit-aer>=0.14
+# tools/gen_seed.py and tools/gen_checksum.py use only the Python
+# standard library (os, struct, sys) - nothing to install here.
+# This file is kept so `pip install -r tools/requirements.txt`
+# still works (as a no-op) if some other tooling expects it.

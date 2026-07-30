@@ -14,7 +14,7 @@ extern kernel_main
 _start:
     mov esp, kernel_stack_top   ; give the C kernel its own stack
 
-    call kernel_main            ; should never return
+    call kernel_main            ; should never return (shell_run() loops forever)
 
 .hang:
     cli

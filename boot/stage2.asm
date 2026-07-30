@@ -4,9 +4,10 @@
 ;  Responsibilities:
 ;    1. Load the kernel image and the pre-computed checksum
 ;       from disk (still in 16-bit real mode).
-;    2. Verify kernel integrity using a checksum that was
-;       *seeded* by the Quantum Security Module at build time
-;       (see tools/quantum_key_gen.py + tools/gen_checksum.py).
+;    2. Verify kernel integrity using a checksum that was seeded
+;       by a random build-time value (see tools/gen_seed.py +
+;       tools/gen_checksum.py). This catches a corrupted or
+;       truncated kernel image before we ever jump into it.
 ;    3. Enable the A20 line.
 ;    4. Load the GDT and switch the CPU into 32-bit protected
 ;       mode (set CR0.PE, far jump to flush the prefetch queue).
@@ -19,13 +20,13 @@
 [ORG 0x8000]
 
 ; SEED_CONST is generated at build time by tools/gen_checksum.py
-; from the quantum-derived key (see docs/DOCUMENTATION.md, section
-; "Quantum Security Module"). It is NOT computed at boot time -
-; no quantum hardware/simulator is available at boot.
+; from a random value produced by tools/gen_seed.py. It is NOT
+; computed at boot time - it's baked into this binary as a NASM
+; constant before assembly.
 %include "stage2_seed.inc"
 
-KERNEL_SECTORS equ 64                     ; reserved kernel size on disk
-KERNEL_BYTES   equ KERNEL_SECTORS * 512   ; = 32768 bytes (32 KB budget)
+KERNEL_SECTORS equ 128                    ; reserved kernel size on disk
+KERNEL_BYTES   equ KERNEL_SECTORS * 512   ; = 65536 bytes (64 KB budget)
 
 stage2_start:
     mov [boot_drive], dl
@@ -109,7 +110,7 @@ enable_a20:
 ; verify_checksum
 ;   Recomputes a rolling XOR/rotate checksum over the freshly
 ;   loaded kernel image (at physical 0x10000, KERNEL_BYTES long),
-;   seeded with SEED_CONST (derived from the quantum module).
+;   seeded with SEED_CONST (a random value picked at build time).
 ;   Compares the result against the 4-byte value loaded from
 ;   checksum.bin (physical 0x9000).
 ;
@@ -155,7 +156,7 @@ verify_checksum:
 boot_drive: db 0
 
 msg_stage2:  db "[stage2] Loading kernel image + checksum...", 13, 10, 0
-msg_verify:  db "[stage2] Verifying kernel integrity (quantum-seeded checksum)...", 13, 10, 0
+msg_verify:  db "[stage2] Verifying kernel integrity...", 13, 10, 0
 msg_ok:      db "[stage2] Integrity OK. Entering protected mode...", 13, 10, 0
 msg_fail:    db "[stage2] INTEGRITY CHECK FAILED - kernel image rejected. Halting.", 13, 10, 0
 msg_diskerr: db "[stage2] Disk read error in Stage 2!", 13, 10, 0
